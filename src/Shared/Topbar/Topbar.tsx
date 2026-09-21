@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -11,6 +11,12 @@ import {
   Tabs,
   Tab,
   Tooltip,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+  Button,
 } from '@mui/material';
 import { styled, alpha } from '@mui/material/styles';
 import SearchIcon from '@mui/icons-material/Search';
@@ -21,6 +27,9 @@ import ScienceIcon from '@mui/icons-material/Science';
 import EventIcon from '@mui/icons-material/Event';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import LogoutIcon from '@mui/icons-material/Logout';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import { Author } from '../../services/api';
 
 const Search = styled('div')(({ theme }) => ({
   position: 'relative',
@@ -62,9 +71,45 @@ interface TopbarProps {
   currentTab?: string;
   onTabChange?: (tab: string) => void;
   onSearch?: (q: string) => void;
+  currentUser?: Author | null;
+  currentProfile?: any | null;
+  userRole?: string | null;
+  onLogout?: () => void;
+  onOpenLogin?: () => void;
 }
 
-export const Topbar: React.FC<TopbarProps> = ({ currentTab = 'feed', onTabChange, onSearch }) => {
+export const Topbar: React.FC<TopbarProps> = ({
+  currentTab = 'feed',
+  onTabChange,
+  onSearch,
+  currentUser,
+  currentProfile,
+  userRole,
+  onLogout,
+  onOpenLogin,
+}) => {
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const openMenu = Boolean(anchorEl);
+
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  const displayName = currentUser
+    ? `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim() || currentUser.username
+    : 'Guest Researcher';
+
+  const initials = currentUser
+    ? `${currentUser.first_name?.[0] || currentUser.username[0] || 'U'}${currentUser.last_name?.[0] || ''}`.toUpperCase()
+    : 'GR';
+
+  const institution = currentUser?.institution || currentProfile?.institution || 'Bioinformatics Community';
+  const orcid = currentUser?.orcid_id || currentProfile?.orcid_id;
+
   return (
     <AppBar
       position="sticky"
@@ -140,7 +185,7 @@ export const Topbar: React.FC<TopbarProps> = ({ currentTab = 'feed', onTabChange
 
         {/* Right: Core Backend Status & Profile */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Tooltip title="Core Backend API running at :8000">
+          <Tooltip title="Core Backend API connected (:8000)">
             <Chip
               icon={<CheckCircleIcon sx={{ fontSize: 14, color: '#10b981 !important' }} />}
               label="Core v0.1 Online"
@@ -159,32 +204,154 @@ export const Topbar: React.FC<TopbarProps> = ({ currentTab = 'feed', onTabChange
             <NotificationsNoneIcon fontSize="small" />
           </IconButton>
 
-          {/* User profile card */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, pl: 1, borderLeft: '1px solid rgba(255, 255, 255, 0.08)' }}>
-            <Avatar
+          {/* User profile card / Menu Trigger */}
+          {currentUser ? (
+            <Box
+              onClick={handleMenuOpen}
               sx={{
-                width: 36,
-                height: 36,
-                bgcolor: '#38bdf8',
-                color: '#090d16',
-                fontWeight: 700,
-                fontSize: '0.9rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.2,
+                pl: 1,
+                py: 0.5,
+                pr: 1,
+                borderLeft: '1px solid rgba(255, 255, 255, 0.08)',
+                cursor: 'pointer',
+                borderRadius: 2,
+                transition: 'background 0.2s ease',
+                '&:hover': {
+                  background: 'rgba(255, 255, 255, 0.04)',
+                },
               }}
             >
-              JT
-            </Avatar>
-            <Box sx={{ display: { xs: 'none', md: 'block' } }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                  Dr. James Taylor
+              <Avatar
+                src={currentUser.avatar_url}
+                sx={{
+                  width: 36,
+                  height: 36,
+                  bgcolor: userRole === 'Consortium Director' ? '#f59e0b' : '#38bdf8',
+                  color: '#090d16',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                }}
+              >
+                {initials}
+              </Avatar>
+              <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                    {displayName}
+                  </Typography>
+                  <VerifiedIcon sx={{ fontSize: 14, color: '#38bdf8' }} />
+                </Box>
+                <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.72rem', display: 'block' }}>
+                  {institution}
                 </Typography>
-                <VerifiedIcon sx={{ fontSize: 14, color: '#38bdf8' }} />
               </Box>
-              <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.72rem', display: 'block' }}>
-                Broad Institute • ORCID
-              </Typography>
+              <KeyboardArrowDownIcon sx={{ color: '#64748b', fontSize: 18 }} />
             </Box>
-          </Box>
+          ) : (
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={onOpenLogin}
+              sx={{
+                borderColor: '#38bdf8',
+                color: '#38bdf8',
+                fontWeight: 600,
+                textTransform: 'none',
+                '&:hover': {
+                  borderColor: '#0284c7',
+                  background: 'rgba(56, 189, 248, 0.1)',
+                },
+              }}
+            >
+              Sign In
+            </Button>
+          )}
+
+          {/* User Profile Popover Menu */}
+          <Menu
+            anchorEl={anchorEl}
+            open={openMenu}
+            onClose={handleMenuClose}
+            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+            slotProps={{
+              paper: {
+                sx: {
+                  mt: 1.5,
+                  minWidth: 260,
+                  bgcolor: 'rgba(15, 23, 42, 0.95)',
+                  backdropFilter: 'blur(20px)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: 3,
+                  boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+                  p: 1,
+                },
+              },
+            }}
+          >
+            <Box sx={{ px: 2, py: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#f8fafc' }}>
+                  {displayName}
+                </Typography>
+                {userRole && (
+                  <Chip
+                    label={userRole}
+                    size="small"
+                    sx={{
+                      height: 20,
+                      fontSize: '0.65rem',
+                      fontWeight: 700,
+                      bgcolor: userRole === 'Consortium Director' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(56, 189, 248, 0.2)',
+                      color: userRole === 'Consortium Director' ? '#fbbf24' : '#38bdf8',
+                    }}
+                  />
+                )}
+              </Box>
+              <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block' }}>
+                @{currentUser?.username}
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mt: 0.5 }}>
+                {institution}
+              </Typography>
+              {orcid && (
+                <Typography variant="caption" sx={{ color: '#38bdf8', display: 'block', fontFamily: 'monospace', mt: 0.5 }}>
+                  ORCID: {orcid}
+                </Typography>
+              )}
+            </Box>
+
+            <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.08)', my: 1 }} />
+
+            <MenuItem
+              onClick={() => {
+                handleMenuClose();
+                onLogout && onLogout();
+              }}
+              sx={{
+                borderRadius: 1.5,
+                color: '#f87171',
+                '&:hover': {
+                  bgcolor: 'rgba(239, 68, 68, 0.1)',
+                },
+              }}
+            >
+              <ListItemIcon sx={{ color: '#f87171', minWidth: 32 }}>
+                <LogoutIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText
+                slotProps={{
+                  primary: {
+                    sx: { fontSize: '0.85rem', fontWeight: 600 },
+                  },
+                }}
+                primary="Sign Out / Switch Account"
+              />
+            </MenuItem>
+          </Menu>
         </Box>
       </Toolbar>
     </AppBar>

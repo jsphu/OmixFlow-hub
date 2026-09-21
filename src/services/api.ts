@@ -17,6 +17,25 @@ export interface Author {
   is_verified_researcher?: boolean;
 }
 
+export interface AuthResponse {
+  token: string;
+  user: Author;
+  profile?: any;
+  is_staff?: boolean;
+  is_superuser?: boolean;
+}
+
+export interface SignupPayload {
+  username: string;
+  email: string;
+  password: string;
+  first_name?: string;
+  last_name?: string;
+  institution?: string;
+  orcid_id?: string;
+  bio?: string;
+}
+
 export interface WorkflowSummary {
   id: string;
   name: string;
@@ -280,6 +299,113 @@ const MOCK_CONFERENCES: ConferenceItem[] = [
 // ==============================================================================
 
 export const api = {
+  // --- Authentication & Session ---
+  getAuthToken(): string | null {
+    return localStorage.getItem('omixflow_token');
+  },
+
+  setAuthSession(data: AuthResponse) {
+    localStorage.setItem('omixflow_token', data.token);
+    localStorage.setItem('omixflow_user', JSON.stringify(data.user));
+    if (data.profile) {
+      localStorage.setItem('omixflow_profile', JSON.stringify(data.profile));
+    }
+    localStorage.setItem(
+      'omixflow_role',
+      data.is_superuser ? 'Consortium Director' : data.is_staff ? 'Staff' : 'Researcher'
+    );
+  },
+
+  clearAuthSession() {
+    localStorage.removeItem('omixflow_token');
+    localStorage.removeItem('omixflow_user');
+    localStorage.removeItem('omixflow_profile');
+    localStorage.removeItem('omixflow_role');
+  },
+
+  getStoredUser(): Author | null {
+    const item = localStorage.getItem('omixflow_user');
+    return item ? JSON.parse(item) : null;
+  },
+
+  getStoredProfile(): any | null {
+    const item = localStorage.getItem('omixflow_profile');
+    return item ? JSON.parse(item) : null;
+  },
+
+  async login(username: string, password: string): Promise<AuthResponse> {
+    const res = await fetch(`${API_BASE}/auth/login/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to authenticate. Please check your credentials.');
+    }
+    const data: AuthResponse = await res.json();
+    this.setAuthSession(data);
+    return data;
+  },
+
+  async signup(payload: SignupPayload): Promise<AuthResponse> {
+    const res = await fetch(`${API_BASE}/auth/signup/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to register account. Please check your details.');
+    }
+    const data: AuthResponse = await res.json();
+    this.setAuthSession(data);
+    return data;
+  },
+
+  async getMe(): Promise<AuthResponse | null> {
+    const token = this.getAuthToken();
+    if (!token) return null;
+    try {
+      const res = await fetch(`${API_BASE}/auth/me/`, {
+        headers: { Authorization: `Token ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated) {
+          this.setAuthSession(data);
+          return data;
+        }
+      }
+    } catch (e) {
+      console.warn('Backend offline, using stored session:', e);
+    }
+    const storedUser = this.getStoredUser();
+    if (storedUser && token) {
+      return {
+        token,
+        user: storedUser,
+        profile: this.getStoredProfile(),
+      };
+    }
+    return null;
+  },
+
+  async logout(): Promise<void> {
+    const token = this.getAuthToken();
+    if (token) {
+      try {
+        await fetch(`${API_BASE}/auth/logout/`, {
+          method: 'POST',
+          headers: { Authorization: `Token ${token}` },
+        });
+      } catch (err) {
+        console.warn('Logout notification error:', err);
+      }
+    }
+    this.clearAuthSession();
+  },
+
   async getWorkflows(topic?: string, format?: string, search?: string): Promise<WorkflowSummary[]> {
     try {
       const params = new URLSearchParams();
@@ -398,19 +524,24 @@ export const api = {
   },
 
   async createPost(post: Partial<PostItem>): Promise<PostItem> {
+    const token = this.getAuthToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Token ${token}`;
+
     try {
       const res = await fetch(`${API_BASE}/posts/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(post),
       });
       if (res.ok) return await res.json();
     } catch (e) {
       console.warn('Posting locally:', e);
     }
+    const currentAuthor = this.getStoredUser() || MOCK_AUTHOR_TAYLOR;
     const newPost: PostItem = {
       id: `post-${Date.now()}`,
-      author: MOCK_AUTHOR_TAYLOR,
+      author: currentAuthor,
       title: post.title || '',
       body_markdown: post.body_markdown || '',
       tags: post.tags || ['Genomics'],
